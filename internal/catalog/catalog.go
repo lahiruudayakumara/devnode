@@ -72,7 +72,34 @@ var services = map[string]Service{
 		Name: "mongodb", Label: "MongoDB",
 		Method:      "Docker container",
 		Description: "Development document database on localhost:27017.",
-		Script:      dockerRun(`volume create mongodb-data >/dev/null; d run -d --name mongodb --restart=unless-stopped -p 127.0.0.1:27017:27017 -v mongodb-data:/data/db mongo:8`),
+		Script: `if ! command -v docker >/dev/null 2>&1; then printf '%s\n' 'Docker is required. Install docker first.' >&2; exit 3; fi
+d(){ if docker info >/dev/null 2>&1; then docker "$@"; else sudo docker "$@"; fi; }
+
+# ── Port conflict check ───────────────────────────────────────────────────────
+if ss -ltn 2>/dev/null | grep -q '127\.0\.0\.1:27017\|0\.0\.0\.0:27017\|\*:27017'; then
+  printf 'ERROR: port 27017 is already in use on this host.\n' >&2
+  printf 'Running containers that may hold it:\n' >&2
+  docker ps --format '  {{.Names}}  {{.Image}}  {{.Ports}}' 2>/dev/null | grep 27017 || true
+  printf 'Resolve the conflict first, then re-run: devnode install mongodb\n' >&2
+  exit 3
+fi
+
+# ── CPU compatibility check (MongoDB 5+ requires AVX) ────────────────────────
+if grep -qw avx /proc/cpuinfo 2>/dev/null; then
+  mongo_image=mongo:8
+  printf 'AVX detected — using MongoDB 8\n'
+else
+  mongo_image=mongo:4.4
+  printf 'No AVX detected — using MongoDB 4.4 (compatible with this CPU)\n'
+fi
+
+# ── Pull and start ────────────────────────────────────────────────────────────
+d volume create mongodb-data >/dev/null
+d run -d --name mongodb --restart=unless-stopped \
+  -p 127.0.0.1:27017:27017 \
+  -v mongodb-data:/data/db \
+  "$mongo_image"
+printf 'MongoDB started (%s). Connect with: devnode tunnel mongodb\n' "$mongo_image"`,
 	},
 	"jupyter": {
 		Name: "jupyter", Label: "Jupyter Notebook",
