@@ -11,8 +11,8 @@ import (
 type serviceItem struct{ label, key string }
 
 func Dashboard(w io.Writer, target string, s status.Snapshot, color bool) {
-	const width = 58
-	line := func(text string) { fmt.Fprintf(w, "│ %-56s │\n", truncate(text, 56)) }
+	const width = 78
+	line := func(text string) { fmt.Fprintf(w, "│ %-76s │\n", truncate(text, 76)) }
 	section := func(name string) {
 		fmt.Fprintln(w, "├"+strings.Repeat("─", width)+"┤")
 		line("  " + name)
@@ -41,8 +41,13 @@ func Dashboard(w io.Writer, target string, s status.Snapshot, color bool) {
 	}
 	for _, group := range groups {
 		section(group.title)
-		for _, item := range group.services {
-			line(serviceLine(item.label, s.Services[item.key], color))
+		for i := 0; i < len(group.services); i += 2 {
+			left := serviceCell(group.services[i].label, s.Services[group.services[i].key], color)
+			right := ""
+			if i+1 < len(group.services) {
+				right = serviceCell(group.services[i+1].label, s.Services[group.services[i+1].key], color)
+			}
+			line("  " + left + "  " + right)
 		}
 	}
 	line("")
@@ -61,7 +66,7 @@ func metric(label string, value int, total string) string {
 	return fmt.Sprintf("  %-13s %s%s  %3d%%%s", label, strings.Repeat("█", filled), strings.Repeat("░", 10-filled), value, suffix)
 }
 
-func serviceLine(label string, svc status.Service, color bool) string {
+func serviceCell(label string, svc status.Service, color bool) string {
 	state := svc.State
 	if state == "" {
 		state = "unknown"
@@ -71,7 +76,11 @@ func serviceLine(label string, svc status.Service, color bool) string {
 	if source == "none" || source == "" {
 		source = "—"
 	}
-	return fmt.Sprintf("  %-16s %s %-14s [%s]", label, dot(running, color), title(state), source)
+	stateLabel := title(state)
+	if state == "not-installed" {
+		stateLabel = "Missing"
+	}
+	return fmt.Sprintf("%-13s %s %-10s %-8s", truncate(label, 13), dot(running, color), truncate(stateLabel, 10), "["+source+"]")
 }
 
 func dot(ok, color bool) string {

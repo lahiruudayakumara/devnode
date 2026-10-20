@@ -12,14 +12,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/lahiruudayakumara/devnode/internal/catalog"
 	"github.com/lahiruudayakumara/devnode/internal/config"
 	devssh "github.com/lahiruudayakumara/devnode/internal/ssh"
 	"github.com/lahiruudayakumara/devnode/internal/status"
+	devtui "github.com/lahiruudayakumara/devnode/internal/tui"
 	"github.com/lahiruudayakumara/devnode/internal/ui"
 )
 
-const Version = "0.2.0"
+const Version = "0.4.0"
 
 const hardwareScript = `printf '%s\n' '========== CPU =========='; lscpu | grep -E 'Model name|CPU\(s\)|Architecture'; printf '%s\n' '========== RAM =========='; free -h; printf '%s\n' '========== STORAGE =========='; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS; printf '%s\n' '========== DISK SPACE =========='; df -h /; printf '%s\n' '========== GPU =========='; lspci | grep -Ei 'vga|3d|display' || printf '%s\n' 'Not detected'; printf '%s\n' '========== DOCKER =========='; docker --version 2>/dev/null || printf '%s\n' 'Not installed'`
 
@@ -92,19 +95,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	case "connect":
 		return noArgs(args[1:], func() error { return client.Run(ctx, nil, true, false) })
 	case "status", "dashboard":
-		if len(args) != 1 {
-			return errors.New("usage: devnode status")
-		}
-		out, err := client.Output(ctx, status.Script(cfg.PostgresService))
-		if err != nil {
-			return err
-		}
-		snap, err := status.Parse(string(out))
-		if err != nil {
-			return err
-		}
-		ui.Dashboard(a.Out, config.Target(cfg), snap, devssh.IsTerminal(a.Out))
-		return nil
+		return a.status(ctx, client, cfg, args[1:])
 	case "monitor":
 		return noArgs(args[1:], func() error {
 			return client.Run(ctx, []string{"sh", "-c", "command -v btop >/dev/null && exec btop; command -v htop >/dev/null && exec htop; exec top"}, true, false)
@@ -124,6 +115,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return noArgs(args[1:], func() error { return client.Run(ctx, []string{"sh", "-c", doctorScript}, false, false) })
 	case "ros":
 		return a.ros(ctx, client, args[1:])
+	case "install":
+		return a.install(ctx, client, cfg, args[1:])
 	case "tunnel":
 		return a.tunnel(ctx, client, args[1:])
 	case "service":
@@ -149,6 +142,121 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; run `devnode help`", args[0])
 	}
+}
+
+func (a *App) status(ctx context.Context, client devssh.Client, cfg config.Config, args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(a.Err)
+	once := fs.Bool("once", false, "render once and exit")
+	interval := fs.Duration("interval", 2*time.Second, "live refresh interval")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return errors.New("usage: devnode status [--once] [--interval 2s]")
+	}
+	if *interval < 500*time.Millisecond || *interval > time.Minute {
+		return errors.New("--interval must be between 500ms and 1m")
+	}
+	if !*once && devssh.IsTerminal(a.Out) {
+		return devtui.Run(ctx, client, cfg, *interval, a.In, a.Out)
+	}
+	out, err := client.Output(ctx, status.Script(cfg.PostgresService))
+	if err != nil {
+		return err
+	}
+	snap, err := status.Parse(string(out))
+	if err != nil {
+		return err
+	}
+	ui.Dashboard(a.Out, config.Target(cfg), snap, devssh.IsTerminal(a.Out))
+	return nil
+}
+
+func (a *App) install(ctx context.Context, client devssh.Client, cfg config.Config, args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: devnode install [service]")
+	}
+	name := ""
+	if len(args) == 1 {
+		name = args[0]
+	}
+	if name == "all" {
+		return errors.New("bulk installation is intentionally unsupported; choose one service")
+	}
+	out, err := client.Output(ctx, status.Script(cfg.PostgresService))
+	if err != nil {
+		return err
+	}
+	snapshot, err := status.Parse(string(out))
+	if err != nil {
+		return err
+	}
+	reader := bufio.NewReader(a.In)
+
+	if name == "" {
+		missing := make([]catalog.Service, 0)
+		for _, candidate := range catalog.Names() {
+			svc, _ := catalog.Get(candidate)
+			state := snapshot.Services[candidate].State
+			if state == "" || state == "not-installed" {
+				missing = append(missing, svc)
+			}
+		}
+		if len(missing) == 0 {
+			fmt.Fprintln(a.Out, "All catalog services are already installed.")
+			return nil
+		}
+		fmt.Fprintln(a.Out, "Missing services (choose one):")
+		for i, svc := range missing {
+			fmt.Fprintf(a.Out, "  %2d) %-18s %-16s %s\n", i+1, svc.Name, "["+svc.Method+"]", svc.Description)
+		}
+		fmt.Fprint(a.Out, "Selection number or name (blank cancels): ")
+		answer, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		answer = strings.TrimSpace(answer)
+		if answer == "" {
+			fmt.Fprintln(a.Out, "Cancelled.")
+			return nil
+		}
+		if n, err := strconv.Atoi(answer); err == nil {
+			if n < 1 || n > len(missing) {
+				return errors.New("selection is out of range")
+			}
+			name = missing[n-1].Name
+		} else {
+			name = answer
+		}
+	}
+
+	svc, ok := catalog.Get(name)
+	if !ok {
+		return fmt.Errorf("unknown installable service %q", name)
+	}
+	if state := snapshot.Services[name].State; state != "" && state != "not-installed" {
+		return fmt.Errorf("%s is already installed (state: %s)", svc.Label, state)
+	}
+	fmt.Fprintf(a.Out, "\n%s\nMethod: %s\nChange: %s\n", svc.Label, svc.Method, svc.Description)
+	if svc.Script == "" {
+		fmt.Fprintf(a.Out, "Guided setup required: %s\n", svc.Manual)
+		return nil
+	}
+	fmt.Fprintf(a.Out, "Type %q to install only this service: ", name)
+	answer, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	if strings.TrimSpace(answer) != name {
+		fmt.Fprintln(a.Out, "Cancelled.")
+		return nil
+	}
+	if err := client.Run(ctx, []string{"sh", "-c", svc.Script}, true, false); err != nil {
+		return fmt.Errorf("install %s: %w", name, err)
+	}
+	fmt.Fprintf(a.Out, "%s installation completed. Check it with `devnode status`.\n", svc.Label)
+	return nil
 }
 
 func (a *App) ros(ctx context.Context, client devssh.Client, args []string) error {
@@ -187,10 +295,10 @@ func (a *App) tunnel(ctx context.Context, client devssh.Client, args []string) e
 	return client.Forward(ctx, localPort, remotePort)
 }
 
-var tunnelPorts = map[string]int{"postgres": 5432, "postgresql": 5432, "mysql": 3306, "redis": 6379, "mongodb": 27017, "adminer": 8080, "pgadmin": 5050, "minio": 9000, "mailpit": 8025, "portainer": 9443, "uptime-kuma": 3001, "netdata": 19999}
+var tunnelPorts = map[string]int{"postgres": 5432, "postgresql": 5432, "mysql": 3306, "redis": 6379, "mongodb": 27017, "adminer": 8080, "pgadmin": 5050, "minio": 9000, "mailpit": 8025, "portainer": 9443, "uptime-kuma": 3001, "netdata": 19999, "dozzle": 8080, "node-red": 1880, "localstack": 4566, "mosquitto": 1883}
 
 func tunnelNames() string {
-	names := []string{"adminer", "mailpit", "minio", "mongodb", "mysql", "netdata", "pgadmin", "portainer", "postgres", "redis", "uptime-kuma"}
+	names := []string{"adminer", "dozzle", "localstack", "mailpit", "minio", "mongodb", "mosquitto", "mysql", "netdata", "node-red", "pgadmin", "portainer", "postgres", "redis", "uptime-kuma"}
 	return strings.Join(names, ", ")
 }
 
@@ -348,12 +456,13 @@ Usage:
 Commands:
   setup                           Configure passwordless SSH (one-time)
   connect                         Open an interactive SSH session
-  status, dashboard               Show system and discovered services
+  status, dashboard               Open the live server dashboard
   hardware                        Show CPU, RAM, storage, GPU, and Docker
   network                         Show addresses, routes, ports, and DNS
   projects                        Find Git projects in standard directories
   doctor                          Check server development prerequisites
   ros <status|nodes|topics>       Inspect the remote ROS 2 environment
+  install [service]               Choose and install one missing service
   tunnel SERVICE [LOCAL_PORT]     Securely forward a service to your Mac
   monitor                         Open btop, htop, or top
   docker <arguments...>           Run a remote Docker command

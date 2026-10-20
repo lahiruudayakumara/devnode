@@ -42,6 +42,8 @@ DEVNODE_HOST=server.local DEVNODE_USER=myuser DEVNODE_PORT=22 ./scripts/install.
 ```text
 devnode dashboard
 devnode status
+devnode status --interval 5s
+devnode status --once
 devnode hardware
 devnode network
 devnode doctor
@@ -49,6 +51,8 @@ devnode projects
 devnode ros status
 devnode ros nodes
 devnode ros topics
+devnode install
+devnode install postgresql
 devnode connect
 devnode monitor
 devnode docker ps
@@ -66,9 +70,11 @@ devnode exec uptime
 devnode shutdown
 ```
 
-The dashboard discovers a curated set of development services and labels each one `[docker]`, `[systemd]`, or not installed. `devnode service NAME ACTION` uses the discovered management style, while the PostgreSQL shortcut does the same for a container named `postgres` or the configured systemd unit.
+The dashboard is a full-screen interactive terminal UI. It refreshes every two seconds, adapts to terminal resizing, and provides Overview, Services, and Help views. Use Tab or arrow keys to navigate, `r` to refresh, `+`/`-` to change the interval, and `q` to exit. `--interval 5s` sets the initial rate; `--once` produces a non-interactive snapshot for scripts. Redirected or piped output also renders only once. The dashboard labels services `[docker]`, `[systemd]`, `[native]`, or missing.
 
 ROS 2 appears under **IoT & Robotics** as running, installed, or not installed. The `ros` command reports the daemon state and lists currently discoverable nodes or topics without installing or changing ROS.
+
+`devnode install` discovers missing services and presents a one-at-a-time chooser. There is deliberately no `all` option. Before changing Ubuntu it shows the installation method and requires you to type the selected service name. PostgreSQL, Redis, Mosquitto, Docker, and selected localhost-only Docker services have automatic recipes. Services requiring credentials, vendor scripts, or compatibility decisions provide guided instructions instead.
 
 Named tunnels bind only to your Mac's loopback address. For example, `devnode tunnel postgres` makes a PostgreSQL server bound to Ubuntu's `127.0.0.1:5432` available temporarily at `127.0.0.1:5432` on the Mac. Keep the command running and press Ctrl-C when finished. Supported names include PostgreSQL, MySQL, Redis, MongoDB, Adminer, pgAdmin, MinIO, Mailpit, Portainer, Uptime Kuma, and Netdata.
 

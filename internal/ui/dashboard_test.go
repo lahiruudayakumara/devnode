@@ -22,7 +22,7 @@ func TestDashboardShowsManagerAndInventory(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{"DEVNODE SERVER", "PostgreSQL", "Running", "[docker]", "[systemd]", "IOT & ROBOTICS", "ROS 2"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("dashboard missing %q", want)
+			t.Errorf("dashboard missing %q\n%s", want, got)
 		}
 	}
 }
