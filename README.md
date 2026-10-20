@@ -40,19 +40,37 @@ DEVNODE_HOST=server.local DEVNODE_USER=myuser DEVNODE_PORT=22 ./scripts/install.
 ## Commands
 
 ```text
+devnode dashboard
 devnode status
+devnode hardware
+devnode network
+devnode doctor
+devnode projects
+devnode ros status
+devnode ros nodes
+devnode ros topics
 devnode connect
 devnode monitor
 devnode docker ps
 devnode docker stats
+devnode service redis status
+devnode service redis restart
 devnode postgres status
 devnode postgres start
 devnode services
 devnode logs --lines 200 nginx
 devnode logs --follow nginx
+devnode tunnel postgres
+devnode tunnel portainer 9443
 devnode exec uptime
 devnode shutdown
 ```
+
+The dashboard discovers a curated set of development services and labels each one `[docker]`, `[systemd]`, or not installed. `devnode service NAME ACTION` uses the discovered management style, while the PostgreSQL shortcut does the same for a container named `postgres` or the configured systemd unit.
+
+ROS 2 appears under **IoT & Robotics** as running, installed, or not installed. The `ros` command reports the daemon state and lists currently discoverable nodes or topics without installing or changing ROS.
+
+Named tunnels bind only to your Mac's loopback address. For example, `devnode tunnel postgres` makes a PostgreSQL server bound to Ubuntu's `127.0.0.1:5432` available temporarily at `127.0.0.1:5432` on the Mac. Keep the command running and press Ctrl-C when finished. Supported names include PostgreSQL, MySQL, Redis, MongoDB, Adminer, pgAdmin, MinIO, Mailpit, Portainer, Uptime Kuma, and Netdata.
 
 Use `devnode --config /path/to/config.yaml status` for another server. For automation, `DEVNODE_HOST`, `DEVNODE_USER`, `DEVNODE_PORT`, `DEVNODE_IDENTITY_FILE`, and `DEVNODE_CONFIG` override file settings.
 
