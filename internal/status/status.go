@@ -7,35 +7,83 @@ import (
 	"strings"
 )
 
-const scriptTemplate = `set -eu
+const scriptTemplate = `set -u
 kv() { printf '%s=%s\n' "$1" "$2"; }
 kv HOST "$(hostname)"
-kv OS "$(. /etc/os-release; printf '%s' "$PRETTY_NAME")"
+kv OS "$(. /etc/os-release 2>/dev/null; printf '%s' "${PRETTY_NAME:-Linux}")"
 kv ARCH "$(uname -m)"
+kv IP "$(hostname -I 2>/dev/null | awk '{print $1}')"
 kv UPTIME "$(uptime -p 2>/dev/null || true)"
-kv CPU "$(LC_ALL=C top -bn1 | awk '/Cpu\(s\)/ {printf "%.0f", 100-$8; exit}' 2>/dev/null || printf '?')"
-kv MEMORY "$(free | awk '/Mem:/ {printf "%.0f", $3*100/$2}')"
-kv DISK "$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
-for entry in docker:docker postgresql:__POSTGRES_SERVICE__ redis:redis-server nginx:nginx; do
-  name=${entry%%:*}
-  svc=${entry#*:}
-  state=$(systemctl is-active "$svc" 2>/dev/null || true)
-  [ -n "$state" ] || state=unavailable
-  kv "SERVICE_$name" "$state"
-done`
+kv CPU_MODEL "$(lscpu 2>/dev/null | awk -F: '/Model name/ {gsub(/^[ \t]+/,"",$2); print $2; exit}')"
+kv CPU "$(LC_ALL=C top -bn1 2>/dev/null | awk '/Cpu\(s\)/ {printf "%.0f", 100-$8; exit}')"
+kv MEMORY "$(free 2>/dev/null | awk '/Mem:/ {printf "%.0f", $3*100/$2}')"
+kv MEMORY_TOTAL "$(free -h 2>/dev/null | awk '/Mem:/ {print $2}')"
+kv DISK "$(df -P / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+kv DISK_TOTAL "$(df -hP / 2>/dev/null | awk 'NR==2 {print $2}')"
+
+check_service() {
+  key=$1 container=$2 unit=$3
+  if command -v docker >/dev/null 2>&1 && docker inspect "$container" >/dev/null 2>&1; then
+    state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null || printf unknown)
+    kv "SERVICE_$key" "$state|docker"
+    return
+  fi
+  load=$(systemctl show "$unit" -p LoadState --value 2>/dev/null || true)
+  if [ -n "$load" ] && [ "$load" != not-found ]; then
+    state=$(systemctl is-active "$unit" 2>/dev/null || true)
+    [ -n "$state" ] || state=unknown
+    kv "SERVICE_$key" "$state|systemd"
+  else
+    kv "SERVICE_$key" "not-installed|none"
+  fi
+}
+
+check_service docker docker docker
+check_service postgresql postgres __POSTGRES_SERVICE__
+check_service redis redis redis-server
+check_service mongodb mongodb mongod
+check_service minio minio minio
+check_service localstack localstack localstack
+check_service mailpit mailpit mailpit
+check_service portainer portainer portainer
+check_service uptime-kuma uptime-kuma uptime-kuma
+check_service dozzle dozzle dozzle
+check_service mosquitto mosquitto mosquitto
+check_service node-red node-red nodered
+check_service netdata netdata netdata
+
+if command -v ros2 >/dev/null 2>&1; then
+  if ros2 daemon status 2>/dev/null | grep -qi running; then
+    kv SERVICE_ros2 "running|native"
+  else
+    kv SERVICE_ros2 "installed|native"
+  fi
+else
+  kv SERVICE_ros2 "not-installed|none"
+fi
+
+runner=$(systemctl list-unit-files 'actions.runner.*.service' --no-legend 2>/dev/null | awk 'NR==1 {print $1}')
+if [ -n "$runner" ]; then
+  state=$(systemctl is-active "$runner" 2>/dev/null || true)
+  kv SERVICE_github-runner "${state:-unknown}|systemd"
+else
+  kv SERVICE_github-runner "not-installed|none"
+fi`
 
 func Script(postgresService string) string {
 	return strings.ReplaceAll(scriptTemplate, "__POSTGRES_SERVICE__", postgresService)
 }
 
+type Service struct{ State, Source string }
+
 type Snapshot struct {
-	Host, OS, Arch, Uptime string
-	CPU, Memory, Disk      int
-	Services               map[string]string
+	Host, OS, Arch, IP, Uptime, CPUModel, MemoryTotal, DiskTotal string
+	CPU, Memory, Disk                                            int
+	Services                                                     map[string]Service
 }
 
 func Parse(data string) (Snapshot, error) {
-	s := Snapshot{CPU: -1, Memory: -1, Disk: -1, Services: map[string]string{}}
+	s := Snapshot{CPU: -1, Memory: -1, Disk: -1, Services: map[string]Service{}}
 	scanner := bufio.NewScanner(strings.NewReader(data))
 	for scanner.Scan() {
 		key, value, ok := strings.Cut(scanner.Text(), "=")
@@ -49,17 +97,26 @@ func Parse(data string) (Snapshot, error) {
 			s.OS = value
 		case "ARCH":
 			s.Arch = value
+		case "IP":
+			s.IP = value
 		case "UPTIME":
 			s.Uptime = strings.TrimPrefix(value, "up ")
+		case "CPU_MODEL":
+			s.CPUModel = value
 		case "CPU":
 			s.CPU = percent(value)
 		case "MEMORY":
 			s.Memory = percent(value)
+		case "MEMORY_TOTAL":
+			s.MemoryTotal = value
 		case "DISK":
 			s.Disk = percent(value)
+		case "DISK_TOTAL":
+			s.DiskTotal = value
 		default:
 			if name, ok := strings.CutPrefix(key, "SERVICE_"); ok {
-				s.Services[name] = value
+				state, source, _ := strings.Cut(value, "|")
+				s.Services[name] = Service{State: state, Source: source}
 			}
 		}
 	}

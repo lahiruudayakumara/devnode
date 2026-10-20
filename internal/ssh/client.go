@@ -47,6 +47,17 @@ func (c Client) Output(ctx context.Context, script string) ([]byte, error) {
 	return out, nil
 }
 
+func (c Client) Forward(ctx context.Context, localPort, remotePort int) error {
+	forward := fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", localPort, remotePort)
+	args := append(c.baseArgs(false), "-N", "-L", forward, config.Target(c.Config))
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.In, c.Out, c.Err
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ssh tunnel: %w", err)
+	}
+	return nil
+}
+
 func (c Client) baseArgs(batch bool) []string {
 	args := []string{"-o", "ConnectTimeout=" + strconv.Itoa(c.Config.ConnectTimeout), "-p", strconv.Itoa(c.Config.Port)}
 	if batch {
