@@ -4,8 +4,8 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 install_dir=${DEVNODE_INSTALL_DIR:-"$HOME/.local/bin"}
 config_path=${DEVNODE_CONFIG:-"$HOME/.config/devnode/config.yaml"}
-server_host=${DEVNODE_HOST:-"192.168.1.17"}
-server_user=${DEVNODE_USER:-"lahiru"}
+server_host=${DEVNODE_HOST:-"192.168.x.x"}
+server_user=${DEVNODE_USER:-"your-username"}
 server_port=${DEVNODE_PORT:-"22"}
 
 mkdir -p "$install_dir"
