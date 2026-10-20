@@ -235,8 +235,19 @@ func (a *App) install(ctx context.Context, client devssh.Client, cfg config.Conf
 	if !ok {
 		return fmt.Errorf("unknown installable service %q", name)
 	}
-	if state := snapshot.Services[name].State; state != "" && state != "not-installed" {
-		return fmt.Errorf("%s is already installed (state: %s)", svc.Label, state)
+	svcState := snapshot.Services[name]
+	switch svcState.State {
+	case "", "not-installed":
+		// not present — proceed normally
+	case "exited", "created", "dead":
+		// container exists but is not running (crashed / never started)
+		fmt.Fprintf(a.Out, "\n%s container is in state %q — removing it before reinstalling...\n", svc.Label, svcState.State)
+		rmScript := `d(){ if docker info >/dev/null 2>&1; then docker "$@"; else sudo docker "$@"; fi; }; d rm -f ` + name
+		if err := client.Run(ctx, []string{"sh", "-c", rmScript}, false, false); err != nil {
+			return fmt.Errorf("remove crashed container %q: %w", name, err)
+		}
+	default:
+		return fmt.Errorf("%s is already installed and running (state: %s)", svc.Label, svcState.State)
 	}
 	fmt.Fprintf(a.Out, "\n%s\nMethod: %s\nChange: %s\n", svc.Label, svc.Method, svc.Description)
 	if svc.Script == "" {
