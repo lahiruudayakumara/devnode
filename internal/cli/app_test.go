@@ -55,3 +55,25 @@ func TestNeedsTTY(t *testing.T) {
 		t.Fatal("unexpected tty")
 	}
 }
+
+func TestValidAction(t *testing.T) {
+	for _, action := range []string{"status", "start", "stop", "restart"} {
+		if !validAction(action) {
+			t.Errorf("expected %s valid", action)
+		}
+	}
+	for _, action := range []string{"", "remove", "start;reboot"} {
+		if validAction(action) {
+			t.Errorf("expected %q invalid", action)
+		}
+	}
+}
+
+func TestTunnelCatalog(t *testing.T) {
+	if tunnelPorts["postgres"] != 5432 || tunnelPorts["mailpit"] != 8025 {
+		t.Fatalf("unexpected tunnel catalog: %#v", tunnelPorts)
+	}
+	if strings.Contains(tunnelNames(), "postgresql") {
+		t.Fatal("aliases should not duplicate tunnel help")
+	}
+}

@@ -19,7 +19,26 @@ import (
 	"github.com/lahiruudayakumara/devnode/internal/ui"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
+
+const hardwareScript = `printf '%s\n' '========== CPU =========='; lscpu | grep -E 'Model name|CPU\(s\)|Architecture'; printf '%s\n' '========== RAM =========='; free -h; printf '%s\n' '========== STORAGE =========='; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS; printf '%s\n' '========== DISK SPACE =========='; df -h /; printf '%s\n' '========== GPU =========='; lspci | grep -Ei 'vga|3d|display' || printf '%s\n' 'Not detected'; printf '%s\n' '========== DOCKER =========='; docker --version 2>/dev/null || printf '%s\n' 'Not installed'`
+
+const networkScript = `printf '%s\n' '========== ADDRESSES =========='; hostname -I; ip -brief address; printf '%s\n' '========== ROUTES =========='; ip route; printf '%s\n' '========== LISTENING PORTS =========='; ss -lntup 2>/dev/null || ss -lnt 2>/dev/null; printf '%s\n' '========== DNS =========='; if command -v resolvectl >/dev/null 2>&1; then resolvectl status | sed -n '1,80p'; else cat /etc/resolv.conf; fi`
+
+const projectsScript = `printf '%s\n' 'Git repositories:'; found=0; for root in "$HOME/projects" "$HOME/dev" "$HOME/workspace"; do [ -d "$root" ] || continue; find "$root" -maxdepth 4 -type d -name .git -print 2>/dev/null | sed 's#/.git$##'; found=1; done; [ "$found" -eq 1 ] || printf '%s\n' 'No standard project directories found.'`
+
+const doctorScript = `printf '%-20s %s\n' CHECK RESULT; for cmd in ssh systemctl docker git curl; do if command -v "$cmd" >/dev/null 2>&1; then printf '%-20s %s\n' "$cmd" OK; else printf '%-20s %s\n' "$cmd" MISSING; fi; done; if docker info >/dev/null 2>&1; then printf '%-20s %s\n' docker-access OK; else printf '%-20s %s\n' docker-access UNAVAILABLE; fi; printf '%-20s %s\n' disk-root "$(df -hP / | awk 'NR==2 {print $5 " used"}')"; printf '%-20s %s\n' memory "$(free -h | awk '/Mem:/ {print $3 " / " $2}')"`
+
+const serviceScript = `container=$1 unit=$2 action=$3
+if command -v docker >/dev/null 2>&1 && docker inspect "$container" >/dev/null 2>&1; then
+  printf 'manager: docker\nservice: %s\n' "$container"
+  if [ "$action" = status ]; then docker inspect -f 'state: {{.State.Status}}' "$container"; else docker "$action" "$container"; fi
+  exit
+fi
+load=$(systemctl show "$unit" -p LoadState --value 2>/dev/null || true)
+if [ -z "$load" ] || [ "$load" = not-found ]; then printf 'Service %s is not installed as Docker or systemd.\n' "$container" >&2; exit 3; fi
+printf 'manager: systemd\nservice: %s\n' "$unit"
+if [ "$action" = status ]; then systemctl status "$unit" --no-pager; else sudo systemctl "$action" "$unit"; fi`
 
 type App struct {
 	In       io.Reader
@@ -72,7 +91,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return noArgs(args[1:], func() error { return a.setup(ctx, client, cfg, *configPath) })
 	case "connect":
 		return noArgs(args[1:], func() error { return client.Run(ctx, nil, true, false) })
-	case "status":
+	case "status", "dashboard":
 		if len(args) != 1 {
 			return errors.New("usage: devnode status")
 		}
@@ -95,6 +114,23 @@ func (a *App) Run(ctx context.Context, args []string) error {
 			return errors.New("usage: devnode docker <arguments...>")
 		}
 		return client.Run(ctx, append([]string{"docker"}, args[1:]...), needsTTY(args[1:]) && devssh.IsTerminal(a.Out), false)
+	case "hardware":
+		return noArgs(args[1:], func() error { return client.Run(ctx, []string{"sh", "-c", hardwareScript}, false, false) })
+	case "network":
+		return noArgs(args[1:], func() error { return client.Run(ctx, []string{"sh", "-c", networkScript}, false, false) })
+	case "projects":
+		return noArgs(args[1:], func() error { return client.Run(ctx, []string{"sh", "-c", projectsScript}, false, false) })
+	case "doctor":
+		return noArgs(args[1:], func() error { return client.Run(ctx, []string{"sh", "-c", doctorScript}, false, false) })
+	case "ros":
+		return a.ros(ctx, client, args[1:])
+	case "tunnel":
+		return a.tunnel(ctx, client, args[1:])
+	case "service":
+		if len(args) != 3 || !config.SafeUnit(args[1]) || !validAction(args[2]) {
+			return errors.New("usage: devnode service <name> <status|start|stop|restart>")
+		}
+		return a.managedService(ctx, client, args[1], args[1], args[2])
 	case "postgres":
 		return a.postgres(ctx, client, cfg.PostgresService, args[1:])
 	case "services":
@@ -113,6 +149,49 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; run `devnode help`", args[0])
 	}
+}
+
+func (a *App) ros(ctx context.Context, client devssh.Client, args []string) error {
+	if len(args) != 1 || (args[0] != "status" && args[0] != "nodes" && args[0] != "topics") {
+		return errors.New("usage: devnode ros <status|nodes|topics>")
+	}
+	var script string
+	switch args[0] {
+	case "status":
+		script = `if ! command -v ros2 >/dev/null 2>&1; then printf '%s\n' 'ROS 2 is not installed.'; exit 3; fi; printf 'ROS_DISTRO=%s\n' "${ROS_DISTRO:-unknown}"; ros2 daemon status`
+	case "nodes":
+		script = `command -v ros2 >/dev/null 2>&1 || { printf '%s\n' 'ROS 2 is not installed.' >&2; exit 3; }; ros2 node list`
+	case "topics":
+		script = `command -v ros2 >/dev/null 2>&1 || { printf '%s\n' 'ROS 2 is not installed.' >&2; exit 3; }; ros2 topic list`
+	}
+	return client.Run(ctx, []string{"sh", "-c", script}, false, false)
+}
+
+func (a *App) tunnel(ctx context.Context, client devssh.Client, args []string) error {
+	if len(args) < 1 || len(args) > 2 {
+		return errors.New("usage: devnode tunnel <service> [local-port]")
+	}
+	remotePort, ok := tunnelPorts[args[0]]
+	if !ok {
+		return fmt.Errorf("unknown tunnel %q; available: %s", args[0], tunnelNames())
+	}
+	localPort := remotePort
+	if len(args) == 2 {
+		n, err := strconv.Atoi(args[1])
+		if err != nil || n < 1 || n > 65535 {
+			return errors.New("local port must be between 1 and 65535")
+		}
+		localPort = n
+	}
+	fmt.Fprintf(a.Out, "Forwarding 127.0.0.1:%d to %s:%d. Press Ctrl-C to stop.\n", localPort, args[0], remotePort)
+	return client.Forward(ctx, localPort, remotePort)
+}
+
+var tunnelPorts = map[string]int{"postgres": 5432, "postgresql": 5432, "mysql": 3306, "redis": 6379, "mongodb": 27017, "adminer": 8080, "pgadmin": 5050, "minio": 9000, "mailpit": 8025, "portainer": 9443, "uptime-kuma": 3001, "netdata": 19999}
+
+func tunnelNames() string {
+	names := []string{"adminer", "mailpit", "minio", "mongodb", "mysql", "netdata", "pgadmin", "portainer", "postgres", "redis", "uptime-kuma"}
+	return strings.Join(names, ", ")
 }
 
 func (a *App) setup(ctx context.Context, client devssh.Client, cfg config.Config, configPath string) error {
@@ -169,10 +248,12 @@ func (a *App) postgres(ctx context.Context, client devssh.Client, service string
 	if len(args) != 1 || (args[0] != "status" && args[0] != "start" && args[0] != "stop" && args[0] != "restart") {
 		return errors.New("usage: devnode postgres <status|start|stop|restart>")
 	}
-	if args[0] == "status" {
-		return client.Run(ctx, []string{"systemctl", "status", service, "--no-pager"}, false, false)
-	}
-	return client.Run(ctx, []string{"sudo", "systemctl", args[0], service}, true, false)
+	return a.managedService(ctx, client, "postgres", service, args[0])
+}
+
+func (a *App) managedService(ctx context.Context, client devssh.Client, container, unit, action string) error {
+	tty := action != "status" && devssh.IsTerminal(a.Out)
+	return client.Run(ctx, []string{"sh", "-c", serviceScript, "devnode-service", container, unit, action}, tty, false)
 }
 
 func (a *App) logs(ctx context.Context, client devssh.Client, args []string) error {
@@ -255,6 +336,10 @@ func needsTTY(args []string) bool {
 	return false
 }
 
+func validAction(action string) bool {
+	return action == "status" || action == "start" || action == "stop" || action == "restart"
+}
+
 const usage = `DevNode controls a remote Ubuntu development server over SSH.
 
 Usage:
@@ -263,9 +348,16 @@ Usage:
 Commands:
   setup                           Configure passwordless SSH (one-time)
   connect                         Open an interactive SSH session
-  status                          Show the server dashboard
+  status, dashboard               Show system and discovered services
+  hardware                        Show CPU, RAM, storage, GPU, and Docker
+  network                         Show addresses, routes, ports, and DNS
+  projects                        Find Git projects in standard directories
+  doctor                          Check server development prerequisites
+  ros <status|nodes|topics>       Inspect the remote ROS 2 environment
+  tunnel SERVICE [LOCAL_PORT]     Securely forward a service to your Mac
   monitor                         Open btop, htop, or top
   docker <arguments...>           Run a remote Docker command
+  service NAME ACTION             Control Docker or systemd automatically
   postgres <status|start|stop|restart>
   services                        List running systemd services
   logs [--follow] [--lines N] SERVICE
