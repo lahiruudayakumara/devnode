@@ -51,6 +51,7 @@ check_service dozzle dozzle dozzle
 check_service mosquitto mosquitto mosquitto
 check_service node-red node-red nodered
 check_service netdata netdata netdata
+check_service jupyter jupyter jupyter
 
 if command -v ros2 >/dev/null 2>&1; then
   if ros2 daemon status 2>/dev/null | grep -qi running; then

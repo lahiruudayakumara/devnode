@@ -74,6 +74,12 @@ var services = map[string]Service{
 		Description: "Development document database on localhost:27017.",
 		Script:      dockerRun(`volume create mongodb-data >/dev/null; d run -d --name mongodb --restart=unless-stopped -p 127.0.0.1:27017:27017 -v mongodb-data:/data/db mongo:8`),
 	},
+	"jupyter": {
+		Name: "jupyter", Label: "Jupyter Notebook",
+		Method:      "Docker container",
+		Description: "Interactive notebooks on localhost:8888.",
+		Script:      dockerRun(`volume create jupyter-data >/dev/null; d run -d --name jupyter --restart=unless-stopped -p 127.0.0.1:8888:8888 -v jupyter-data:/home/jovyan/work -e JUPYTER_ENABLE_LAB=yes jupyter/minimal-notebook:latest start-notebook.py --NotebookApp.token='' --NotebookApp.password='' --ip=0.0.0.0`),
+	},
 
 	// ── Guided installs ───────────────────────────────────────────────────────
 

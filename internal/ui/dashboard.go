@@ -35,7 +35,7 @@ func Dashboard(w io.Writer, target string, s status.Snapshot, color bool) {
 		title    string
 		services []serviceItem
 	}{
-		{"CORE & DATA", []serviceItem{{"Docker", "docker"}, {"PostgreSQL", "postgresql"}, {"Redis", "redis"}, {"MongoDB", "mongodb"}, {"MinIO", "minio"}, {"LocalStack", "localstack"}, {"Mailpit", "mailpit"}}},
+		{"CORE & DATA", []serviceItem{{"Docker", "docker"}, {"PostgreSQL", "postgresql"}, {"Redis", "redis"}, {"MongoDB", "mongodb"}, {"MinIO", "minio"}, {"LocalStack", "localstack"}, {"Mailpit", "mailpit"}, {"Jupyter", "jupyter"}}},
 		{"DEVOPS & MONITORING", []serviceItem{{"GitHub Runner", "github-runner"}, {"Portainer", "portainer"}, {"Uptime Kuma", "uptime-kuma"}, {"Dozzle", "dozzle"}, {"Netdata", "netdata"}}},
 		{"IOT & ROBOTICS", []serviceItem{{"MQTT Broker", "mosquitto"}, {"Node-RED", "node-red"}, {"ROS 2", "ros2"}}},
 	}

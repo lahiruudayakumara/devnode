@@ -307,10 +307,10 @@ func (a *App) tunnel(ctx context.Context, client devssh.Client, args []string) e
 	return client.Forward(ctx, localPort, remotePort)
 }
 
-var tunnelPorts = map[string]int{"postgres": 5432, "postgresql": 5432, "mysql": 3306, "redis": 6379, "mongodb": 27017, "adminer": 8080, "pgadmin": 5050, "minio": 9000, "mailpit": 8025, "portainer": 9443, "uptime-kuma": 3001, "netdata": 19999, "dozzle": 8080, "node-red": 1880, "localstack": 4566, "mosquitto": 1883}
+var tunnelPorts = map[string]int{"postgres": 5432, "postgresql": 5432, "mysql": 3306, "redis": 6379, "mongodb": 27017, "adminer": 8080, "pgadmin": 5050, "minio": 9000, "mailpit": 8025, "portainer": 9443, "uptime-kuma": 3001, "netdata": 19999, "dozzle": 8080, "node-red": 1880, "localstack": 4566, "mosquitto": 1883, "jupyter": 8888}
 
 func tunnelNames() string {
-	names := []string{"adminer", "dozzle", "localstack", "mailpit", "minio", "mongodb", "mosquitto", "mysql", "netdata", "node-red", "pgadmin", "portainer", "postgres", "redis", "uptime-kuma"}
+	names := []string{"adminer", "dozzle", "jupyter", "localstack", "mailpit", "minio", "mongodb", "mosquitto", "mysql", "netdata", "node-red", "pgadmin", "portainer", "postgres", "redis", "uptime-kuma"}
 	return strings.Join(names, ", ")
 }
 
