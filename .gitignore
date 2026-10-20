@@ -1,0 +1,30 @@
+# ── Build output ──────────────────────────────────────────────
+/bin/
+dist/
+
+# ── Real user config (never commit) ───────────────────────────
+config.yaml
+*.local.yaml
+
+# ── SSH keys & secrets ────────────────────────────────────────
+*.pem
+*.key
+id_*
+!id_*.pub
+
+# ── Go toolchain ──────────────────────────────────────────────
+vendor/
+*.test
+*.out
+coverage.html
+
+# ── OS / IDE ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ── DevNode internal ──────────────────────────────────────────
+.context-pilot/

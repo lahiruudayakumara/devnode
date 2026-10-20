@@ -1,0 +1,8 @@
+# Copy to ~/.config/devnode/config.yaml and fill in your values.
+host: 192.168.x.x
+user: your-username
+port: 22
+# Leave empty to use OpenSSH's agent and default key discovery.
+identity_file: ""
+connect_timeout: 8
+postgres_service: postgresql
