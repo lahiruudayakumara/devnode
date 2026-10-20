@@ -15,7 +15,10 @@ func TestCatalogHasNoBulkInstaller(t *testing.T) {
 			t.Fatalf("invalid catalog entry %q: %+v", name, s)
 		}
 		if (s.Script == "") == (s.Manual == "") {
-			t.Fatalf("%s must have exactly one installation path", name)
+			t.Fatalf("%s must have exactly one installation path (Script xor Manual)", name)
+		}
+		if s.Script == "" && len(s.Steps) == 0 {
+			t.Fatalf("%s is guided but has no Steps defined", name)
 		}
 		if strings.Contains(s.Script, "; run ") {
 			t.Fatalf("%s has an unwrapped docker command", name)

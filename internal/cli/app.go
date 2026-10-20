@@ -240,7 +240,19 @@ func (a *App) install(ctx context.Context, client devssh.Client, cfg config.Conf
 	}
 	fmt.Fprintf(a.Out, "\n%s\nMethod: %s\nChange: %s\n", svc.Label, svc.Method, svc.Description)
 	if svc.Script == "" {
-		fmt.Fprintf(a.Out, "Guided setup required: %s\n", svc.Manual)
+		fmt.Fprintf(a.Out, "\nWhy guided? %s\n", svc.Manual)
+		if len(svc.Steps) > 0 {
+			fmt.Fprintf(a.Out, "\nRun these commands on the server (use `devnode connect` to open a shell):\n\n")
+			for _, step := range svc.Steps {
+				if step == "" {
+					fmt.Fprintln(a.Out)
+				} else {
+					fmt.Fprintf(a.Out, "  %s\n", step)
+				}
+			}
+			fmt.Fprintln(a.Out)
+		}
+		fmt.Fprintf(a.Out, "Once installed, run `devnode status` to confirm.\n")
 		return nil
 	}
 	fmt.Fprintf(a.Out, "Type %q to install only this service: ", name)
