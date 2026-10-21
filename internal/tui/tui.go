@@ -199,7 +199,41 @@ func (m model) overview(width int) string {
 	for _, name := range important {
 		rows = append(rows, serviceRow(serviceLabel(name), s.Services[name], width))
 	}
-	return identity + "\n\n" + resources + "\n\n" + summary + "\n\n" + titleStyle.Render("ESSENTIAL SERVICES") + "\n" + strings.Join(rows, "\n")
+	out := identity + "\n\n" + resources
+	if tc := m.toolchain(width); tc != "" {
+		out += "\n\n" + tc
+	}
+	return out + "\n\n" + summary + "\n\n" + titleStyle.Render("ESSENTIAL SERVICES") + "\n" + strings.Join(rows, "\n")
+}
+
+func (m model) toolchain(width int) string {
+	tools := status.DisplayTools(m.snapshot.Tools)
+	if len(tools) == 0 {
+		return ""
+	}
+	rows := make([]string, 0, (len(tools)+1)/2)
+	colWidth := max(24, (width-4)/2)
+	cellStyle := lipgloss.NewStyle().Width(colWidth)
+	for i := 0; i < len(tools); i += 2 {
+		left := toolRow(tools[i].Label, tools[i].Version)
+		if i+1 < len(tools) && width >= 54 {
+			right := toolRow(tools[i+1].Label, tools[i+1].Version)
+			rows = append(rows, cellStyle.Render(left)+right)
+		} else {
+			rows = append(rows, left)
+			if i+1 < len(tools) {
+				rows = append(rows, toolRow(tools[i+1].Label, tools[i+1].Version))
+			}
+		}
+	}
+	return titleStyle.Render("DEV RUNTIMES") + "\n" + strings.Join(rows, "\n")
+}
+
+func toolRow(label, version string) string {
+	if version != "" {
+		return fmt.Sprintf("%s %-10s %s", goodStyle.Render("●"), label, version)
+	}
+	return fmt.Sprintf("%s %-10s %s", badStyle.Render("○"), label, mutedStyle.Render("not installed"))
 }
 
 func (m model) services(width int) string {

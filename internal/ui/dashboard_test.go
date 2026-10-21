@@ -16,11 +16,16 @@ func TestDashboardShowsManagerAndInventory(t *testing.T) {
 			"postgresql": {State: "running", Source: "docker"},
 			"redis":      {State: "inactive", Source: "systemd"},
 		},
+		Tools: map[string]string{
+			"node": "v20.11.0",
+			"npm":  "10.2.4",
+			"pnpm": "8.15.1",
+		},
 	}
 	var out bytes.Buffer
 	Dashboard(&out, "dev@devbox", s, false)
 	got := out.String()
-	for _, want := range []string{"DEVNODE SERVER", "PostgreSQL", "Running", "[docker]", "[systemd]", "IOT & ROBOTICS", "ROS 2"} {
+	for _, want := range []string{"DEVNODE SERVER", "DEVELOPMENT RUNTIMES", "Node.js", "v20.11.0", "npm", "10.2.4", "pnpm", "8.15.1", "PostgreSQL", "Running", "[docker]", "[systemd]", "IOT & ROBOTICS", "ROS 2"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("dashboard missing %q\n%s", want, got)
 		}

@@ -31,6 +31,19 @@ func Dashboard(w io.Writer, target string, s status.Snapshot, color bool) {
 	line(metric("Memory", s.Memory, s.MemoryTotal))
 	line(metric("Disk", s.Disk, s.DiskTotal))
 
+	tools := status.DisplayTools(s.Tools)
+	if len(tools) > 0 {
+		section("DEVELOPMENT RUNTIMES")
+		for i := 0; i < len(tools); i += 2 {
+			left := toolCell(tools[i].Label, tools[i].Version, color)
+			right := ""
+			if i+1 < len(tools) {
+				right = toolCell(tools[i+1].Label, tools[i+1].Version, color)
+			}
+			line("  " + left + "  " + right)
+		}
+	}
+
 	groups := []struct {
 		title    string
 		services []serviceItem
@@ -81,6 +94,16 @@ func serviceCell(label string, svc status.Service, color bool) string {
 		stateLabel = "Missing"
 	}
 	return fmt.Sprintf("%-13s %s %-10s %-8s", truncate(label, 13), dot(running, color), truncate(stateLabel, 10), "["+source+"]")
+}
+
+func toolCell(label, version string, color bool) string {
+	running := version != ""
+	dotIcon := dot(running, color)
+	ver := version
+	if ver == "" {
+		ver = "not installed"
+	}
+	return fmt.Sprintf("%-13s %s %-19s", truncate(label, 13), dotIcon, truncate(ver, 19))
 }
 
 func dot(ok, color bool) string {
