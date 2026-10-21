@@ -59,7 +59,13 @@ func (c Client) Forward(ctx context.Context, localPort, remotePort int) error {
 }
 
 func (c Client) baseArgs(batch bool) []string {
-	args := []string{"-o", "ConnectTimeout=" + strconv.Itoa(c.Config.ConnectTimeout), "-p", strconv.Itoa(c.Config.Port)}
+	args := []string{
+		"-o", "ConnectTimeout=" + strconv.Itoa(c.Config.ConnectTimeout),
+		"-p", strconv.Itoa(c.Config.Port),
+		"-o", "ControlMaster=auto",
+		"-o", "ControlPath=/tmp/devnode-cm-%C",
+		"-o", "ControlPersist=60s",
+	}
 	if batch {
 		args = append(args, "-o", "BatchMode=yes")
 	}

@@ -148,12 +148,12 @@ func (a *App) status(ctx context.Context, client devssh.Client, cfg config.Confi
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(a.Err)
 	once := fs.Bool("once", false, "render once and exit")
-	interval := fs.Duration("interval", 2*time.Second, "live refresh interval")
+	interval := fs.Duration("interval", 1*time.Second, "live refresh interval")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: devnode status [--once] [--interval 2s]")
+		return errors.New("usage: devnode status [--once] [--interval 1s]")
 	}
 	if *interval < 500*time.Millisecond || *interval > time.Minute {
 		return errors.New("--interval must be between 500ms and 1m")

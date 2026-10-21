@@ -100,14 +100,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "3", "?":
 			m.tab = 2
 		case "+", "=":
-			if m.interval > time.Second {
-				m.interval -= time.Second
+			if m.interval > 500*time.Millisecond {
+				m.interval -= 500 * time.Millisecond
 				m.generation++
 				return m, m.tickCmd()
 			}
 		case "-":
 			if m.interval < 30*time.Second {
-				m.interval += time.Second
+				m.interval += 500 * time.Millisecond
 				m.generation++
 				return m, m.tickCmd()
 			}
@@ -125,7 +125,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.generation != m.generation {
 			return m, nil
 		}
-		m.loading = true
 		return m, m.fetchCmd()
 	}
 	return m, nil
@@ -141,8 +140,8 @@ func (m model) View() tea.View {
 	connection := goodStyle.Render("● ONLINE")
 	if m.err != nil {
 		connection = badStyle.Render("● CONNECTION ERROR")
-	} else if m.loading {
-		connection = warnStyle.Render("◌ REFRESHING")
+	} else if m.snapshot.Host == "" {
+		connection = warnStyle.Render("◌ CONNECTING...")
 	}
 	header = header + strings.Repeat(" ", max(1, contentWidth-lipgloss.Width(header)-lipgloss.Width(connection))) + connection
 
